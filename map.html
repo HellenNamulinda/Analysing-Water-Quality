@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Water Source Locations</title>
+    <link
+      rel="stylesheet"
+      href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css"
+    />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css"
+    />
+    <style>
+      #map {
+        height: 700px;
+      }
+    </style>
+    <link rel="stylesheet" href="css/style.css" />
+  </head>
+  <body>
+    <nav class="navbar navbar-expand-lg navbar-light bg-light">
+      <div class="container-fluid">
+        <div class="navbar-header">
+          <a class="navbar-brand" href="/">Dashboard</a>
+        </div>
+        <ul class="nav navbar-nav navbar-right">
+          <li>
+            <a style="text-decoration: none" href="map.html"> Water Sources</a>
+          </li>
+        </ul>
+      </div>
+    </nav>
+    <h2 style="text-align: center">
+      Geo-Spatial Distribution of Water Quality and Water Sources
+    </h2>
+    <div class="col-lg-12 col-12 mb-3">
+      <div class="card">
+        <div
+          class="card-header d-flex align-items-center justify-content-between"
+        >
+          <div class="form-inline">
+            <label for="parameter-select">Parameter</label>
+            <select
+              value="electrical_conductivity"
+              id="parameter-select"
+              class="form-control-sm ml-2"
+            >
+              <option value="Electrical Conductivity">
+                Electrical Conductivity
+              </option>
+              <option value="pH">pH</option>
+              <option value="Turbidity">Turbidity</option>
+              <option value="Total Alkalinity">Total Alkalinity</option>
+              <option value="Total Hardness">Total Hardness</option>
+              <option value="Calcium Hardness">Calcium Hardness</option>
+              <option value="Fluoride">Fluoride</option>
+              <option value="Nitrites">Nitrites</option>
+              <option value="Sulphates">Sulphates</option>
+              <option value="Ammonium">Ammonium</option>
+              <option value="Chloride">Chloride</option>
+              <option value="Phosphates">Phosphates</option>
+              <option value="Nitrates">Nitrates</option>
+              <option value="Potassium">Potassium</option>
+              <option value="Iron">Iron</option>
+              <option value="Free Chlorine">Free Chlorine</option>
+              <option value="Color">Color</option>
+            </select>
+          </div>
+        </div>
+        <div class="card-body">
+          <div id="map"></div>
+        </div>
+      </div>
+    </div>
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
+    <script src="https://d3js.org/d3.v6.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chroma-js/2.1.0/chroma.min.js"></script>
+    <script>
+      // Initialize the map
+      var map = L.map("map").setView([0.347596, 32.58252], 7);
+      // Create the tile layer (e.g., OpenStreetMap)
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "Map data &copy; OpenStreetMap contributors",
+      }).addTo(map);
+
+            // Create a color legend 
+            const legend = L.control({ position: "topright" });
+            legend.onAdd = function () {
+              const div = L.DomUtil.create("div", "legend");
+
+              div.innerHTML += `<div style="text-align:center"><h5>Legend</h4></div>`;
+              const colors = ["blue", "green", "gray"];
+              const labels = ["Below Average", "Above Average", "Unknown"];
+              // Loop through the labels and colors to create the legend items for each parameter
+              for (let i = 0; i < labels.length; i++) {
+                div.innerHTML += `
+            <div style="background-color:${colors[i]}"> ${labels[i]}
+            </div>
+          `;
+              }
+
+              return div;
+            };
+            legend.addTo(map);
+
+      // Read the CSV file
+      d3.csv("../data/water_quality_all.csv")
+        .then(function (data) {
+          let parameterValue;
+          let selectedParameter;
+          // Event listener for parameter select change
+          const parameterSelect = document.getElementById("parameter-select");
+          parameterSelect.value = ""; // Set default selection
+          parameterSelect.addEventListener("change", function () {
+            selectedParameter = this.value;
+            updateBubbleColors(selectedParameter);
+          });
+
+          // Create a bubble layer for the data points
+          const bubbleLayer = L.layerGroup();
+          // Update the bubble colors based on the selected water quality parameter
+          function updateBubbleColors(selectedParameter) {
+            var average = d3.mean(
+              data.map(function (d) {
+                return d[selectedParameter];
+              })
+            );  
+            data.forEach((point) => {
+              const lat = parseFloat(point.Latitude);
+              const lng = parseFloat(point.Longitude);
+              // Ignore data points with NaN coordinates
+              if (isNaN(lat) || isNaN(lng)) {
+                // console.warn("Invalid coordinates for data point:", point);
+                return;
+              }
+              // Get the value of the selected water quality parameter for the current data point
+              parameterValue = parseFloat(point[selectedParameter]);
+              // Determine the color based on the water quality value
+              let color;
+              if (parameterValue >= average) {
+                color = "green"; // Set gray color for invalid or missing data
+              } else if (parameterValue < average) {
+                color = "blue"; // Set green color for good quality
+              } else {
+                color = "gray"; // Set red color for bad quality
+              }
+
+              // Update the fill color of the bubble marker
+              const bubbleMarker = point.marker;
+              let sourceType;
+              if (point["Source type"].length === 0) {
+                sourceType = "Others";
+              } else {
+                sourceType = point["Source type"];
+              }
+              if (isNaN(parameterValue)) {
+                parameterValue = "Unknown";
+                return;
+              }
+              bubbleMarker.setStyle({ fillColor: color }).bindPopup(
+                `
+              <div class="container">
+              <h5 style="text-align: center"> Water Source Details</h5>
+              <div> <b>Source Name: </b>${point.SourceName}</div>
+              <div><b>Village: </b>${point.Village} </div>
+              <div><b>Sub-county: </b> ${point["Sub-county"]} </div>
+              <div><b>District: </b> ${point.District} </div>
+              <div><b> Source type: </b>${sourceType}</div>
+              <div><b>GPS: </b>${point.Latitude} , ${point.Longitude} </div><br>
+              <div>${selectedParameter}: <b>${parameterValue}</b></div>
+              <div<h6>Average ${selectedParameter}: <b>${average}</b></h6></div>
+              </div>
+              `
+              );
+            });
+          }
+
+          // Create a bubble markers
+          data.forEach((point) => {
+            const lat = parseFloat(point.Latitude);
+            const lng = parseFloat(point.Longitude);
+            // Ignore data points with NaN coordinates
+            if (isNaN(lat) || isNaN(lng)) {
+              // console.warn("Invalid coordinates for data point:", point);
+              return;
+            }
+            const bubbleMarker = L.circleMarker([lat, lng], {
+              color: "black",
+              weight: 1,
+              fillColor: "gray", // Initial  color
+              fillOpacity: 0.8,
+              radius: 10,
+            });
+
+            let sourceType;
+            if (point["Source type"].length === 0) {
+              sourceType = "Others";
+            } else {
+              sourceType = point["Source type"];
+            }
+            // console.log('Type',point["Source type"], typeof(point["Source type"]), point["Source type"].length)
+            // Bind a popup to the bubble marker
+            bubbleMarker.bindPopup(
+              `
+              <div class="container">
+              <h5 style="text-align: center"> Water Source Details</h5>
+              <div> <b>Source Name: </b>${point.SourceName}</div>
+              <div><b>Village: </b>${point.Village} </div>
+              <div><b>Sub-county: </b> ${point["Sub-county"]} </div>
+              <div><b>District: </b> ${point.District} </div>
+              <div><b> Source type: </b>${sourceType}</div>
+              <div><b>GPS: </b>${point.Latitude} , ${point.Longitude} </div>
+              </div>
+              `
+            );
+
+            // Add the bubble marker to the bubble layer
+            bubbleMarker.addTo(bubbleLayer);
+
+            // Add the marker reference to the data point for easy access later
+            point.marker = bubbleMarker;
+          });
+          // Add the bubble layer to the map
+          bubbleLayer.addTo(map);
+        })
+        .catch(function (error) {
+          // Handle error while loading the CSV file
+          console.log(error);
+        });
+    </script>
+  </body>
+</html>
